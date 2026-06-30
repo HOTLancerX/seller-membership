@@ -8,6 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveUser } from "@/lib/session";
 import { getMembershipForUser } from "../../../models/SellerMembership";
 import { getPackageById } from "../../../models/MembershipPackage";
+import connectDB from "@/lib/mongodb";
+import Post from "@/models/post";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +33,15 @@ export async function GET(req: NextRequest): Promise<Response> {
             ? await getPackageById(membership.packageId)
             : null;
 
-        return NextResponse.json({ membership, package: pkg });
+        // Count actual products from Post model (authoritative, not stored counter)
+        await connectDB();
+        const productCount = await Post.countDocuments({
+            userId: targetUserId,
+            type: "product",
+            status: { $ne: "trash" },
+        });
+
+        return NextResponse.json({ membership: { ...membership, productCount }, package: pkg });
     } catch (error) {
         console.error("Seller membership status GET error:", error);
         return NextResponse.json({ error: "Failed to fetch membership status" }, { status: 500 });

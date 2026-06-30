@@ -11,7 +11,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { useUser } from "@/context/Provider";
-import { xFetch } from "@/lib/express";
+// API routes live under Next.js /api/ — use fetch() directly
 
 interface Membership {
     _id:          string;
@@ -44,7 +44,7 @@ export default function SellerMembershipPage() {
         if (!user?._id) return;
         setLoading(true);
         try {
-            const res = await xFetch(`/seller-membership/status?userId=${user._id}`, { cache: "no-store" });
+            const res = await fetch(`/api/seller-membership/status?userId=${user._id}`, { cache: "no-store" });
             const data = await res.json();
             setMembership(data.membership ?? null);
             setPkg(data.package ?? null);

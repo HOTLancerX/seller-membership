@@ -9,7 +9,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
-import { xFetch } from "@/lib/express";
 
 interface MemberRow {
     _id:          string;
@@ -21,6 +20,7 @@ interface MemberRow {
     activatedAt:  string;
     expiresAt:    string | null;
     productCount: number;
+    packageLimit: number;
     userName:     string;
     userEmail:    string;
     userImage:    string;
@@ -42,7 +42,7 @@ export default function AdminMembershipMembers() {
     const fetchMembers = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await xFetch("/seller-membership/members", { cache: "no-store" });
+            const res = await fetch("/api/seller-membership/members", { cache: "no-store" });
             const data = await res.json();
             setMembers(data.members ?? []);
         } catch { /* silent */ }
@@ -143,7 +143,12 @@ export default function AdminMembershipMembers() {
                                                     {cfg.label}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 text-gray-700">{m.productCount}</td>
+                                            <td className="px-4 py-3 text-gray-700">
+                                                {m.productCount}
+                                                {m.packageLimit > 0 && (
+                                                    <span className="text-gray-400"> / {m.packageLimit}</span>
+                                                )}
+                                            </td>
                                             <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(m.activatedAt)}</td>
                                             <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(m.expiresAt)}</td>
                                             <td className="px-4 py-3 text-gray-500 text-xs font-mono">{m.orderNumber || "—"}</td>

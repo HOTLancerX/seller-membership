@@ -9,6 +9,7 @@ import { getAllMemberships } from "../../../models/SellerMembership";
 import { getAllPackages } from "../../../models/MembershipPackage";
 import connectDB from "@/lib/mongodb";
 import User from "@/models/Users";
+import Post from "@/models/post";
 
 export const dynamic = "force-dynamic";
 
@@ -38,13 +39,27 @@ export async function GET(): Promise<Response> {
 
         const pkgMap = new Map(packages.map((p) => [p._id, p]));
 
+        // Count actual products per seller from Post model (authoritative)
+        const productCounts = new Map<string, number>();
+        if (userIds.length > 0) {
+            const counts = await Post.aggregate([
+                { $match: { userId: { $in: userIds }, type: "product", status: { $ne: "trash" } } },
+                { $group: { _id: "$userId", count: { $sum: 1 } } },
+            ]);
+            for (const row of counts) {
+                productCounts.set(String(row._id), row.count);
+            }
+        }
+
         const enriched = memberships.map((m) => ({
             ...m,
+            productCount: productCounts.get(m.userId) ?? 0,
             userName: userMap.get(m.userId)?.name ?? "",
             userEmail: userMap.get(m.userId)?.email ?? "",
             userImage: userMap.get(m.userId)?.image ?? "",
             packageName: pkgMap.get(m.packageId)?.name ?? "",
             packageType: pkgMap.get(m.packageId)?.type ?? "",
+            packageLimit: pkgMap.get(m.packageId)?.productLimit ?? 0,
         }));
 
         return NextResponse.json({ members: enriched });

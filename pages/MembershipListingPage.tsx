@@ -12,7 +12,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { useUser } from "@/context/Provider";
-import { xFetch } from "@/lib/express";
+// API routes live under Next.js /api/ — use fetch() directly
 
 interface Package {
     _id:          string;
@@ -39,7 +39,7 @@ export default function MembershipListingPage() {
 
     const fetchPackages = useCallback(async () => {
         try {
-            const res = await xFetch("/seller-membership/packages", { cache: "no-store" });
+            const res = await fetch("/api/seller-membership/packages", { cache: "no-store" });
             const data = await res.json();
             setPackages((data.packages ?? []).filter((p: Package) => p._id));
         } catch { /* silent */ }

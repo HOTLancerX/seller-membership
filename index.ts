@@ -52,14 +52,6 @@ export function register() {
             position: 21,
         },
         {
-            key:      "seller-membership-packages",
-            label:    "Packages",
-            icon:     "solar:box-bold",
-            slug:     "seller-membership",
-            parent:   "seller-membership",
-            position: 1,
-        },
-        {
             key:      "seller-membership-members",
             label:    "Members",
             icon:     "solar:users-group-rounded-bold",

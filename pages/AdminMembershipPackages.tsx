@@ -9,7 +9,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
-import { xFetch } from "@/lib/express";
 
 interface Package {
     _id:          string;
@@ -41,6 +40,7 @@ export default function AdminMembershipPackages() {
     const [packages, setPackages] = useState<Package[]>([]);
     const [loading, setLoading]   = useState(true);
     const [editing, setEditing]   = useState<Package | null>(null);
+    const [showForm, setShowForm] = useState(false);
     const [form, setForm]         = useState(EMPTY);
     const [saving, setSaving]     = useState(false);
     const [message, setMessage]   = useState("");
@@ -48,7 +48,7 @@ export default function AdminMembershipPackages() {
     const fetchPackages = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await xFetch("/seller-membership/packages", { cache: "no-store" });
+            const res = await fetch("/api/seller-membership/packages", { cache: "no-store" });
             const data = await res.json();
             setPackages(data.packages ?? []);
         } catch { /* silent */ }
@@ -60,12 +60,14 @@ export default function AdminMembershipPackages() {
     const openAdd = () => {
         setEditing(null);
         setForm(EMPTY);
+        setShowForm(true);
         setMessage("");
     };
 
     const openEdit = (pkg: Package) => {
         setEditing(pkg);
         setForm({ ...pkg });
+        setShowForm(true);
         setMessage("");
     };
 
@@ -75,13 +77,13 @@ export default function AdminMembershipPackages() {
         setMessage("");
         try {
             if (editing) {
-                const res = await xFetch(`/seller-membership/packages/${editing._id}`, {
+                const res = await fetch(`/api/seller-membership/packages/${editing._id}`, {
                     method: "PUT",
                     body: JSON.stringify(form),
                 });
                 if (!res.ok) throw new Error();
             } else {
-                const res = await xFetch("/seller-membership/packages", {
+                const res = await fetch("/api/seller-membership/packages", {
                     method: "POST",
                     body: JSON.stringify(form),
                 });
@@ -90,6 +92,7 @@ export default function AdminMembershipPackages() {
             setMessage("Saved successfully!");
             setEditing(null);
             setForm(EMPTY);
+            setShowForm(false);
             fetchPackages();
         } catch {
             setMessage("Error: Failed to save");
@@ -99,14 +102,14 @@ export default function AdminMembershipPackages() {
     const handleDelete = async (id: string) => {
         if (!confirm("Delete this package? Sellers with this package will not be affected but the link will be broken.")) return;
         try {
-            await xFetch(`/seller-membership/packages/${id}`, { method: "DELETE" });
+            await fetch(`/api/seller-membership/packages/${id}`, { method: "DELETE" });
             fetchPackages();
         } catch { /* silent */ }
     };
 
     const toggleActive = async (pkg: Package) => {
         try {
-            await xFetch(`/seller-membership/packages/${pkg._id}`, {
+            await fetch(`/api/seller-membership/packages/${pkg._id}`, {
                 method: "PUT",
                 body: JSON.stringify({ isActive: !pkg.isActive }),
             });
@@ -139,7 +142,7 @@ export default function AdminMembershipPackages() {
             )}
 
             {/* ── Add/Edit Form ── */}
-            {(editing !== null || form.name !== "") && (
+            {showForm && (
                 <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-4">
                     <h2 className="text-sm font-bold text-gray-800">
                         {editing ? "Edit Package" : "New Package"}
@@ -153,9 +156,13 @@ export default function AdminMembershipPackages() {
                             onChange={(v) => setForm((f) => ({ ...f, type: v as any }))} />
                         <Field label="Product Upload Limit" type="number" value={String(form.productLimit)}
                             onChange={(v) => setForm((f) => ({ ...f, productLimit: Number(v) || 1 }))} />
-                        <Field label="Linked Product ID (Post._id)" value={form.productId}
-                            onChange={(v) => setForm((f) => ({ ...f, productId: v }))}
-                            placeholder="Leave blank for free package" />
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-semibold text-gray-600">Linked Product (buy to activate)</label>
+                            <ProductSelect
+                                value={form.productId}
+                                onChange={(v) => setForm((f) => ({ ...f, productId: v }))}
+                            />
+                        </div>
                         <Field label="Icon (Iconify name)" value={form.icon}
                             onChange={(v) => setForm((f) => ({ ...f, icon: v }))} />
                         <div className="md:col-span-2">
@@ -175,7 +182,7 @@ export default function AdminMembershipPackages() {
                             className="px-5 py-2 bg-indigo-500 text-white rounded-xl text-sm font-semibold hover:bg-indigo-400 transition disabled:opacity-50">
                             {saving ? "Saving…" : editing ? "Update" : "Create"}
                         </button>
-                        <button onClick={() => { setEditing(null); setForm(EMPTY); setMessage(""); }}
+                        <button onClick={() => { setEditing(null); setForm(EMPTY); setShowForm(false); setMessage(""); }}
                             className="px-5 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-200 transition">
                             Cancel
                         </button>
@@ -291,6 +298,106 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
             <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
                 value ? "translate-x-6" : "translate-x-1"
             }`} />
+        </button>
+    );
+}
+
+function ProductSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    const [query, setQuery]       = useState("");
+    const [results, setResults]   = useState<any[]>([]);
+    const [searching, setSearching] = useState(false);
+    const [selectedTitle, setSelectedTitle] = useState("");
+    const [showSearch, setShowSearch] = useState(false);
+
+    const search = useCallback(async (q: string) => {
+        if (!q.trim()) { setResults([]); return; }
+        setSearching(true);
+        try {
+            const EXPRESS_API = process.env.NEXT_PUBLIC_EXPRESS_API_URL ?? "http://localhost:5000";
+            const LICENSE_KEY = process.env.NEXT_PUBLIC_LICENSE_KEY ?? "";
+            const res = await fetch(`${EXPRESS_API}/post?type=product&search=${encodeURIComponent(q)}&limit=10`, {
+                credentials: "include",
+                headers: { "x-license-key": LICENSE_KEY },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setResults(data.posts ?? []);
+            }
+        } catch { /* silent */ }
+        finally { setSearching(false); }
+    }, []);
+
+    useEffect(() => {
+        const t = setTimeout(() => search(query), 300);
+        return () => clearTimeout(t);
+    }, [query, search]);
+
+    const selectProduct = (post: any) => {
+        onChange(post._id);
+        setSelectedTitle(post.title);
+        setShowSearch(false);
+        setQuery("");
+        setResults([]);
+    };
+
+    const clear = () => {
+        onChange("");
+        setSelectedTitle("");
+    };
+
+    if (!showSearch && value) {
+        return (
+            <div className="flex items-center gap-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+                <Icon icon="solar:box-bold" width={16} className="text-gray-400 shrink-0" />
+                <span className="text-sm text-gray-700 truncate flex-1">{selectedTitle || value}</span>
+                <button type="button" onClick={clear} className="text-xs text-red-400 hover:text-red-600 shrink-0">Remove</button>
+            </div>
+        );
+    }
+
+    if (showSearch) {
+        return (
+            <div className="flex flex-col gap-2 p-2 bg-white border border-gray-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                    <input type="text" value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Search products..."
+                        className="flex-1 text-sm px-3 py-1.5 border rounded-lg outline-none focus:border-indigo-400" autoFocus />
+                    <button type="button" onClick={() => { setShowSearch(false); setQuery(""); setResults([]); }}
+                        className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+                </div>
+                {searching && <p className="text-xs text-gray-400">Searching…</p>}
+                {results.length > 0 && (
+                    <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                        {results.map((post) => (
+                            <button key={post._id} type="button" onClick={() => selectProduct(post)}
+                                className={`flex items-center gap-2 p-1.5 rounded text-left transition ${
+                                    value === post._id ? "bg-indigo-100" : "hover:bg-indigo-50"
+                                }`}>
+                                <div className="w-8 h-8 rounded bg-gray-200 overflow-hidden shrink-0">
+                                    {(() => {
+                                        try {
+                                            const imgs = JSON.parse(post.info?.images ?? "[]");
+                                            return Array.isArray(imgs) && imgs[0] ? (
+                                                <img src={imgs[0]} alt="" className="w-full h-full object-cover" />
+                                            ) : null;
+                                        } catch { return null; }
+                                    })()}
+                                </div>
+                                <span className="text-xs font-medium text-gray-700 truncate">{post.title}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <button type="button" onClick={() => setShowSearch(true)}
+            className="flex items-center justify-center gap-1.5 w-full py-2 border border-dashed border-gray-300 rounded-lg text-xs text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition">
+            <Icon icon="solar:magnifer-bold" width={14} />
+            Search for product…
         </button>
     );
 }
