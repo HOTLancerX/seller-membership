@@ -18,6 +18,7 @@
  */
 
 import { addHook, type PluginMeta } from "@/hook";
+import { addAction } from "@/hook/pluginHooks";
 import AdminMembershipPackages from "./pages/AdminMembershipPackages";
 import AdminMembershipMembers from "./pages/AdminMembershipMembers";
 import SellerMembershipPage from "./pages/SellerMembershipPage";
@@ -40,6 +41,52 @@ export const PLUGINS: PluginMeta = {
  * Called by PluginList.reregisterHooks() after the gate is armed.
  */
 export function register() {
+
+    // ─── Action: order.delivered → activate membership ────────────────────────
+    // Fired by product/api/orders/[orderNumber]/route.ts when an order transitions
+    // to "delivered". If any item matches a membership package's linked productId,
+    // activate or renew the buyer's seller membership.
+    // The product plugin has ZERO imports from this plugin.
+    addAction<{
+        order: any;
+        orderNumber: string;
+        userId: string;
+        items: any[];
+    }>("order.delivered", async ({ order, orderNumber, userId, items }) => {
+        try {
+            const buyerUserId = userId || order?.userId;
+            if (!buyerUserId) return;
+
+            const [{ getActivePackages }, { activateMembership }] = await Promise.all([
+                import("./models/MembershipPackage"),
+                import("./models/SellerMembership"),
+            ]);
+
+            const packages = await getActivePackages();
+            if (!packages.length) return;
+
+            for (const item of (items ?? [])) {
+                const matchedPkg = packages.find((p: any) => p.productId === item.productId);
+                if (!matchedPkg) continue;
+
+                const quantity = item.quantity ?? 1;
+                await activateMembership(
+                    buyerUserId,
+                    matchedPkg._id,
+                    orderNumber,
+                    quantity,
+                    matchedPkg.type as 'one-time' | 'monthly' | 'yearly'
+                );
+
+                console.log(
+                    `[seller-membership] Activated ${matchedPkg.name} for user ${buyerUserId}` +
+                    ` (qty: ${quantity}, order: ${orderNumber})`
+                );
+            }
+        } catch (err) {
+            console.error('[seller-membership] order.delivered handler error:', err);
+        }
+    }, PLUGINS.nx, 20); // priority 20 — runs after seller commission (priority 10)
 
     // ─── Admin nav — Seller Membership section ────────────────────────────────
     addHook("admin.nav", [
